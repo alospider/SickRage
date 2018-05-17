@@ -371,10 +371,6 @@ class TVShow(object):  # pylint: disable=too-many-instance-attributes, too-many-
             logger.log(str(self.indexerid) + ": Show dir doesn't exist, skipping NFO generation")
             return
 
-        self.updateShowNFO()
-
-    def updateShowNFO(self):
-
         result = False
 
         if not ek(os.path.isdir, self._location):
@@ -968,6 +964,9 @@ class TVShow(object):  # pylint: disable=too-many-instance-attributes, too-many-
         return self.nextaired
 
     def deleteShow(self, full=False):
+        main_db_con = db.DBConnection()
+
+        episodes_locations = main_db_con.select("SELECT location FROM tv_episodes WHERE showid = ? AND location != ''", [self.indexerid])
 
         sql_l = [["DELETE FROM tv_episodes WHERE showid = ?", [self.indexerid]],
                  ["DELETE FROM tv_shows WHERE indexer_id = ?", [self.indexerid]],
@@ -975,7 +974,6 @@ class TVShow(object):  # pylint: disable=too-many-instance-attributes, too-many-
                  ["DELETE FROM xem_refresh WHERE indexer_id = ?", [self.indexerid]],
                  ["DELETE FROM scene_numbering WHERE indexer_id = ?", [self.indexerid]]]
 
-        main_db_con = db.DBConnection()
         main_db_con.mass_action(sql_l)
 
         action = ('delete', 'trash')[sickbeard.TRASH_REMOVE_SHOW]
@@ -1010,13 +1008,30 @@ class TVShow(object):  # pylint: disable=too-many-instance-attributes, too-many-
                     except Exception as error:
                         logger.log('Unable to change permissions of {0}: {1}'.format(self._location, error), logger.WARNING)
 
-                if sickbeard.TRASH_REMOVE_SHOW:
-                    send2trash(self.location)
+                shows_in_folder = main_db_con.select("SELECT location from tv_shows WHERE location LIKE '{showloc}%' AND indexer_id != ?".format(
+                    showloc=self.location), [self.indexerid])
+                num_shows_in_folder = len(shows_in_folder)
+                if num_shows_in_folder:
+                    logger.log('Cannot delete the show folder from disk, because this location is the root dir for {num} other shows!'.format(num=num_shows_in_folder))
+                    logger.log('Deleting individual episodes. There may be some related files or folders left behind afterwards.')
+                    for ep_file in episodes_locations:
+                        for show_file in ek(glob.glob, helpers.replace_extension(glob.escape(ep_file[b'location']), '*')):
+                            logger.log('Attempt to {0} related file {1}'.format(action, show_file))
+                            try:
+                                if sickbeard.TRASH_REMOVE_SHOW:
+                                    send2trash(show_file)
+                                else:
+                                    ek(os.remove, show_file)
+                            except OSError as error:
+                                logger.log('Unable to {0} {1}: {2}'.format(action, show_file, error), logger.WARNING)
                 else:
-                    ek(shutil.rmtree, self.location)
+                    if sickbeard.TRASH_REMOVE_SHOW:
+                        send2trash(self.location)
+                    else:
+                        ek(shutil.rmtree, self.location)
 
-                logger.log('{0} show folder {1}'.format
-                           (('Deleted', 'Trashed')[sickbeard.TRASH_REMOVE_SHOW], self._location))
+                    logger.log('{0} show folder {1}'.format
+                               (('Deleted', 'Trashed')[sickbeard.TRASH_REMOVE_SHOW], self._location))
 
             except ShowDirectoryNotFoundException:
                 logger.log("Show folder does not exist, no need to {0} {1}".format(action, self._location), logger.WARNING)
@@ -1159,11 +1174,8 @@ class TVShow(object):  # pylint: disable=too-many-instance-attributes, too-many-
         helpers.update_anime_support()
 
         if self.imdbid:
-            controlValueDict = {"indexer_id": self.indexerid}
-            newValueDict = self.imdb_info
-
             main_db_con = db.DBConnection()
-            main_db_con.upsert("imdb_info", newValueDict, controlValueDict)
+            main_db_con.upsert("imdb_info", self.imdb_info, controlValueDict)
 
     def __str__(self):
         toReturn = ""
@@ -1424,7 +1436,7 @@ class TVEpisode(object):  # pylint: disable=too-many-instance-attributes, too-ma
                        (id=self.show.indexerid, subtitles=subtitle_list, show=self.show.name,
                         ep=episode_num(self.season, self.episode)), logger.DEBUG)
 
-            notifiers.notify_subtitle_download(self.prettyName(), subtitle_list)
+            notifiers.notify_subtitle_download(self.pretty_name(), subtitle_list)
         else:
             logger.log("{id}: No subtitles downloaded for {show} {ep}".format
                        (id=self.show.indexerid, show=self.show.name,
@@ -1990,7 +2002,7 @@ class TVEpisode(object):  # pylint: disable=too-many-instance-attributes, too-ma
             return strings
         return self._format_pattern(pattern)
 
-    def prettyName(self):
+    def pretty_name(self):
         """
         Returns the name of this episode in a "pretty" human-readable format. Used for logging
         and notifications and such.

@@ -43,12 +43,6 @@ except ImportError:
     import xml.etree.ElementTree as etree
 
 
-
-
-
-
-
-
 class GenericMetadata(object):
     """
     Base class for all metadata providers. Default behavior is meant to mostly
@@ -261,7 +255,7 @@ class GenericMetadata(object):
 
     def create_episode_metadata(self, ep_obj):
         if self.episode_metadata and ep_obj and not self._has_episode_metadata(ep_obj):
-            logger.log("Metadata provider " + self.name + " creating episode metadata for " + ep_obj.prettyName(),
+            logger.log("Metadata provider " + self.name + " creating episode metadata for " + ep_obj.pretty_name(),
                        logger.DEBUG)
             return self.write_ep_file(ep_obj)
         return False
@@ -283,6 +277,8 @@ class GenericMetadata(object):
 
                 root = showXML.getroot()
                 if indexerid is not None:
+                    if indexerid.text == str(show_obj.indexerid):
+                        return True
                     indexerid.text = str(show_obj.indexerid)
                 else:
                     etree.SubElement(root, "id").text = str(show_obj.indexerid)
@@ -319,7 +315,7 @@ class GenericMetadata(object):
 
     def create_episode_thumb(self, ep_obj):
         if self.episode_thumbnails and ep_obj and not self._has_episode_thumb(ep_obj):
-            logger.log("Metadata provider " + self.name + " creating episode thumbnail for " + ep_obj.prettyName(),
+            logger.log("Metadata provider " + self.name + " creating episode thumbnail for " + ep_obj.pretty_name(),
                        logger.DEBUG)
             return self.save_thumbnail(ep_obj)
         return False

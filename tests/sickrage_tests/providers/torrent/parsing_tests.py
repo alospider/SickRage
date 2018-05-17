@@ -186,7 +186,7 @@ class BaseParser(type):
                 if result[b'link'].startswith('magnet'):
                     self.assertTrue(magnet_regex.match(result[b'link']))
                 else:
-                    self.assertTrue(validators.url(result[b'link'], require_tld=False))
+                    self.assertTrue(validators.url(result[b'link']))
 
                 self.assertIsInstance(self.provider._get_size(result), six.integer_types)  # pylint: disable=protected-access
                 self.assertTrue(all(self.provider._get_title_and_url(result)))  # pylint: disable=protected-access
@@ -209,7 +209,7 @@ def generate_test_cases():
     """
     for p in sickbeard.providers.__all__:
         provider = sickbeard.providers.getProviderModule(p).provider
-        if provider.supports_backlog and provider.provider_type == 'torrent' and provider.public:
+        if provider.can_backlog and provider.provider_type == 'torrent' and provider.public:
             generated_class = type(str(provider.name), (BaseParser.TestCase,), {'provider': provider})
             globals()[generated_class.__name__] = generated_class
             del generated_class
